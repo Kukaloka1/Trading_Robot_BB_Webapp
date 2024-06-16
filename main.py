@@ -258,7 +258,12 @@ def run_trading_bot():
                                 else:
                                     if position_size >= 0.1:
                                         order = place_order(str(uuid.uuid4()), symbol, action, 'market', position_size, leverage=LEVERAGE if ACCOUNT_TYPE == 'margin' else None)
-                                        order_id = order['data']['orderId'] if order else None
+                                        if order:
+                                            order_id = order.get('data', {}).get('orderId')  # Manejo seguro de la clave 'data'
+                                            if not order_id:
+                                                logging.error(f"Orden no contiene 'orderId': {order}")
+                                        else:
+                                            logging.error("Error al colocar la orden.")
                                     else:
                                         logging.error(f"Trade amount {position_size} USDT es menor que el mínimo requerido de 0.1 USDT.")
                         else:
