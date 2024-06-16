@@ -16,7 +16,8 @@ def market_data():
 
 @app.route('/api/account-balance', methods=['GET'])
 def account_balance():
-    balance = get_account_balance()
+    use_artificial = request.args.get('use_artificial', 'false').lower() == 'true'
+    balance = get_account_balance(use_artificial=use_artificial)
     if balance is not None:
         return jsonify(balance)
     return jsonify({'error': 'Failed to fetch account balance'}), 500

@@ -6,7 +6,7 @@ import requests
 import datetime
 import uuid  # Import the uuid module
 import time
-from config import EXCHANGE, SYMBOL, RISK_PER_TRADE, SYMBOL_SPOT, ACCOUNT_TYPE, MARGIN_TYPE, BASE_URL_FUTURES
+from config import EXCHANGE, SYMBOL, RISK_PER_TRADE, SYMBOL_SPOT, ACCOUNT_TYPE, MARGIN_TYPE, BASE_URL_FUTURES, ARTIFICIAL_BALANCE
 from kucoin_requests import KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE
 from kucoin_requests import get_kucoin_headers, get_base_url
 
@@ -66,17 +66,22 @@ def execute_trade(symbol, amount, side):
             'side': side,
             'error': str(e)
         })
-def get_account_balance():
+def get_account_balance(use_artificial=False):
     try:
         logging.info("Fetching account balance")
+        
+        if use_artificial:
+            logging.info("Using artificial balance.")
+            filtered_balance = {"USDT": ARTIFICIAL_BALANCE["USDT"]}
+            logging.info(f"Artificial account balance: {filtered_balance}")
+            return filtered_balance
+        
         balance = EXCHANGE.fetch_balance()
         if balance:
             logging.info("Account balance fetched successfully.")
-            # Filtrar solo BTC y USDT
+            # Filtrar solo USDT
             filtered_balance = {
-                currency: balance['total'][currency] 
-                for currency in ['BTC', 'USDT'] 
-                if currency in balance['total']
+                "USDT": balance['total'].get("USDT", 0)
             }
             logging.info(f"Filtered account balance: {filtered_balance}")
             return filtered_balance

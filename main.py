@@ -148,6 +148,7 @@ def check_capital_usage(balance, position_size, max_usage):
 def run_trading_bot():
     operations_logger = logging.getLogger('operations')
     logging.info("🚀 Bot de trading iniciado. Buscando oportunidades de trading.")
+    
     if ACCOUNT_TYPE in ['futures', 'margin']:
         try:
             if ACCOUNT_TYPE == 'futures':
@@ -198,6 +199,9 @@ def run_trading_bot():
     else:
         logging.info("📭 No hay órdenes abiertas.")
 
+    # Parámetro para usar el balance artificial
+    use_artificial_balance = True  # Cambiar a False si deseas usar el balance real
+
     while True:
         try:
             logging.info("💼 Obteniendo datos del mercado...")
@@ -225,9 +229,9 @@ def run_trading_bot():
                 logging.info(f"🤖 Recomendación GPT-4: Sentimiento {gpt4_recommendation['sentiment']}, Evaluación de Riesgo {gpt4_recommendation['risk_assessment']}")
 
                 logging.info("💼 Obteniendo balance de la cuenta...")
-                account_balance = get_account_balance()
+                account_balance = get_account_balance(use_artificial=use_artificial_balance)  # Usa el parámetro aquí
                 if account_balance:
-                    logging.info(f"💰 Balance de la cuenta (BTC y USDT): {account_balance}")
+                    logging.info(f"💰 Balance de la cuenta (USDT): {account_balance}")
 
                     total_balance = account_balance.get('USDT', 0)
                     if total_balance <= 0:

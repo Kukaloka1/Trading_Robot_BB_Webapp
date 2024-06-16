@@ -93,5 +93,9 @@ except Exception as e:
 EXCHANGE = exchange
 SYMBOL = symbol
 
+# Balance artificial en USDT
+ARTIFICIAL_BALANCE = {
+    "USDT": 10000
+}
 # Exportar otras configuraciones
 __all__ = ['SYMBOL', 'TIMEFRAME', 'LIMIT', 'RISK_PER_TRADE', 'EXCHANGE', 'ACCOUNT_TYPE', 'MAX_CAPITAL_USAGE', 'LEVERAGE']
