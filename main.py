@@ -12,8 +12,20 @@ from strategies.trading_strategy import manage_position_with_trail_stop, confirm
 from kucoin_signature import get_kucoin_headers
 from config import KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE
 from kucoin_requests import BASE_URL_FUTURES, get_open_orders_margin, BASE_URL_MARGIN
+from stream_trading.stream_logs import run_server, add_log_message
+
 
 print("💰โค้ดนี้จะทำให้ฉันเป็นเศรษฐี, สำเร็จแล้ว ด้วยความช่วยเหลือจาก AI💰")
+
+class BufferHandler(logging.Handler):
+    def emit(self, record):
+        log_entry = self.format(record)
+        add_log_message(log_entry)
+
+def setup_logging():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    buffer_handler = BufferHandler()
+    logging.getLogger().addHandler(buffer_handler)
 
 def set_leverage(symbol, leverage, margin_type=None):
     try:
@@ -280,10 +292,9 @@ def run_trading_bot():
 
 if __name__ == "__main__":
     setup_logging()
+    logging.info("Iniciando el bot de trading y el servidor WebSocket")
+    threading.Thread(target=run_server).start()
     run_trading_bot()
-
-
-
 
 
 
