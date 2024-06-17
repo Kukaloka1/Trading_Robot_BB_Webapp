@@ -1,5 +1,8 @@
 import time
 import requests
+import asyncio
+import websockets
+import json
 import uuid  
 import logging
 import threading
@@ -161,6 +164,19 @@ def run_trading_bot():
     operations_logger = logging.getLogger('operations')
     logging.info("🚀 Bot de trading iniciado. Buscando oportunidades de trading.")
     
+    # Configura el WebSocket
+    async def send_signal(signal):
+        try:
+            async with websockets.connect("ws://localhost:8765") as websocket:
+                message = json.dumps({"type": "signal", "action": signal})
+                await websocket.send(message)
+                print(f"Señal enviada: {message}")
+        except Exception as e:
+            print(f"Error enviando señal: {e}")
+
+    def notify_signal(signal):
+        asyncio.run(send_signal(signal))
+
     if ACCOUNT_TYPE in ['futures', 'margin']:
         try:
             if ACCOUNT_TYPE == 'futures':
@@ -274,6 +290,9 @@ def run_trading_bot():
                                             order_id = order.get('data', {}).get('orderId')  # Manejo seguro de la clave 'data'
                                             if not order_id:
                                                 logging.error(f"Orden no contiene 'orderId': {order}")
+                                                continue
+                                            # Notifica la señal
+                                            notify_signal(action)
                                         else:
                                             logging.error("Error al colocar la orden.")
                                     else:
