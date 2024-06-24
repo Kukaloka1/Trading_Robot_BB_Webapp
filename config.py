@@ -95,7 +95,10 @@ SYMBOL = symbol
 
 # Balance artificial en USDT
 ARTIFICIAL_BALANCE = {
-    "USDT": 10000
+    "USDT": 9750
 }
+
+INITIAL_BALANCE = 7500 # Define el balance inicial aquí
+
 # Exportar otras configuraciones
 __all__ = ['SYMBOL', 'TIMEFRAME', 'LIMIT', 'RISK_PER_TRADE', 'EXCHANGE', 'ACCOUNT_TYPE', 'MAX_CAPITAL_USAGE', 'LEVERAGE']

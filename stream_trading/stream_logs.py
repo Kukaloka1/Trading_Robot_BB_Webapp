@@ -8,11 +8,9 @@ from collections import deque
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Buffer para almacenar mensajes de log
-log_buffer = deque()
+log_buffer = deque(maxlen=100)  # Limitar el tamaño del buffer a 100
 
 def add_log_message(message):
-    if len(log_buffer) >= 100:
-        log_buffer.popleft()
     log_buffer.append(message)
 
 async def send_logs(websocket, path):
@@ -38,13 +36,12 @@ async def start_server():
     await server.wait_closed()
 
 def run_server():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(start_server())
-    loop.run_forever()
+    asyncio.run(start_server())
 
 if __name__ == "__main__":
     run_server()
+
+
 
 
 

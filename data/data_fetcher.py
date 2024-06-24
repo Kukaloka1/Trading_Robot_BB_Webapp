@@ -4,6 +4,7 @@ import json
 import os
 import requests
 import datetime
+import ccxt
 import uuid  # Import the uuid module
 import time
 from config import EXCHANGE, SYMBOL, RISK_PER_TRADE, SYMBOL_SPOT, ACCOUNT_TYPE, MARGIN_TYPE, BASE_URL_FUTURES, ARTIFICIAL_BALANCE
@@ -66,23 +67,18 @@ def execute_trade(symbol, amount, side):
             'side': side,
             'error': str(e)
         })
-def get_account_balance(use_artificial=False):
+        
+        
+def get_account_balance(use_artificial=True):
     try:
         logging.info("Fetching account balance")
-        
         if use_artificial:
             logging.info("Using artificial balance.")
-            filtered_balance = {"USDT": ARTIFICIAL_BALANCE["USDT"]}
-            logging.info(f"Artificial account balance: {filtered_balance}")
-            return filtered_balance
-        
+            return ARTIFICIAL_BALANCE
         balance = EXCHANGE.fetch_balance()
         if balance:
             logging.info("Account balance fetched successfully.")
-            # Filtrar solo USDT
-            filtered_balance = {
-                "USDT": balance['total'].get("USDT", 0)
-            }
+            filtered_balance = {"USDT": balance['total'].get("USDT", 0)}
             logging.info(f"Filtered account balance: {filtered_balance}")
             return filtered_balance
         else:
@@ -91,6 +87,19 @@ def get_account_balance(use_artificial=False):
     except Exception as e:
         logging.error(f"Error fetching account balance: {e}")
         return {}
+
+    
+def update_artificial_balance(order_response, side):
+    try:
+        global ARTIFICIAL_BALANCE
+        order = order_response['data']
+        if side == 'buy':
+            ARTIFICIAL_BALANCE['USDT'] -= float(order['size']) * float(order['price'])
+        elif side == 'sell':
+            ARTIFICIAL_BALANCE['USDT'] += float(order['size']) * float(order['price'])
+        logging.info(f"Updated artificial balance: {ARTIFICIAL_BALANCE}")
+    except Exception as e:
+        logging.error(f"Error updating artificial balance: {e}")    
 
 def get_increment(symbol):
     try:
@@ -113,16 +122,25 @@ def calculate_trade_amount(balance, risk_per_trade):
         balance_usdt = balance.get('USDT', 0)
         logging.info(f"💰Balance disponible en USDT: {balance_usdt}")
         if balance_usdt > 0:
-            trade_amount = balance_usdt * risk_per_trade
-            logging.info(f"Calculando trade amount: {trade_amount} (balance_usdt * risk_per_trade)")
+            trade_amount_usdt = balance_usdt * risk_per_trade
+            logging.info(f"Calculando trade amount: {trade_amount_usdt} USDT (balance_usdt * risk_per_trade)")
+
+            current_price = get_current_price(SYMBOL_SPOT)
+            if current_price is None:
+                logging.error("No se pudo obtener el precio actual para calcular la cantidad de la operación.")
+                return None
+
+            trade_amount = trade_amount_usdt / current_price
+            logging.info(f"Trade amount calculado en unidades del activo: {trade_amount} BTC (trade_amount_usdt / current_price)")
+
             increment = get_increment(SYMBOL_SPOT)
             if increment:
                 trade_amount = round(trade_amount // increment * increment, 8)
-                logging.info(f"Trade amount ajustado al incremento: {trade_amount}")
-                if trade_amount < 0.1:
-                    logging.error(f"Trade amount {trade_amount} USDT es menor que el mínimo requerido de 0.1 USDT.")
+                logging.info(f"Trade amount ajustado al incremento: {trade_amount} BTC")
+                if trade_amount < 0.001:
+                    logging.error(f"Trade amount {trade_amount} BTC es menor que el mínimo requerido de 0.001 BTC.")
                     return None
-                logging.info(f"Calculated trade amount: {trade_amount} USDT based on balance {balance_usdt} USDT and risk per trade {risk_per_trade}")
+                logging.info(f"Calculated trade amount: {trade_amount} BTC based on balance {balance_usdt} USDT and risk per trade {risk_per_trade}")
                 return trade_amount
             else:
                 logging.error("No se pudo obtener el incremento para el par de trading.")
@@ -133,6 +151,8 @@ def calculate_trade_amount(balance, risk_per_trade):
     except Exception as e:
         logging.error(f"Error calculating trade amount: {e}")
         return None
+
+
 
 
 def place_order(client_oid, symbol, side, order_type, size, price=None, leverage=None):
@@ -156,6 +176,7 @@ def place_order(client_oid, symbol, side, order_type, size, price=None, leverage
     
     response = requests.post(base_url + endpoint, headers=headers, json=body)
     return response.json()
+
 
 
 
@@ -270,13 +291,24 @@ def get_open_orders_futures(symbol):
         logging.error(f"Error al obtener las órdenes abiertas: {e}")
         return None
 
+
 def get_current_price(symbol):
-    market_data = get_market_data(symbol, '1m', 1)  # Obtiene el último dato de mercado
-    if market_data is not None and not market_data.empty:
-        return market_data['close'].iloc[-1]
-    else:
-        logging.error(f"No se pudo obtener el precio actual para {symbol}.")
+    try:
+        response = requests.get(f'https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={symbol}')
+        data = response.json()
+        if 'data' in data and 'price' in data['data']:
+            current_price = float(data['data']['price'])
+            logging.info(f"Precio actual obtenido para {symbol}: {current_price}")
+            return current_price
+        else:
+            logging.error("No se pudo obtener el precio actual del símbolo.")
+            return None
+    except Exception as e:
+        logging.error(f"Error al obtener el precio actual: {e}")
         return None
+
+
+
 
 
 
