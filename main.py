@@ -80,62 +80,50 @@ def log_order_details(order_response, balance):
 
 def place_order_with_logging(symbol, order_type, side, amount):
     try:
-        client_oid = str(uuid.uuid4())
         current_price = get_current_price(symbol)
-
         if current_price is None:
-            logging.error("No se pudo obtener el precio actual para el símbolo.")
-            return
+            logging.error("No se pudo obtener el precio actual para colocar la orden.")
+            return False
 
         cost = amount * current_price
-
         logging.info(f"Intentando colocar orden: {side} {amount} unidades en {symbol} a {current_price} cada una (Costo: {cost} USDT).")
-        logging.info(f"Balance actual: {balance_manager.get_balance()['USDT']}, Balance comprometido: {balance_manager.committed_balance}")
 
-        if not balance_manager.can_trade(amount, current_price, side):
-            logging.error("Balance insuficiente para realizar la orden.")
-            return
+        # Aquí vamos a simular la colocación de la orden
+        if side == 'buy':
+            if not balance_manager.can_trade(amount, current_price, side):
+                logging.error(f"Balance insuficiente para colocar la orden de compra. Balance disponible: {balance_manager.get_balance()['available_balance']} USDT.")
+                return False
+            balance_manager.commit_balance(amount, current_price)
+        elif side == 'sell':
+            if not balance_manager.can_trade(amount, current_price, side):
+                logging.error(f"Balance insuficiente para colocar la orden de venta. Balance disponible: {balance_manager.get_balance()['available_balance']} USDT.")
+                return False
+            balance_manager.commit_balance(amount, current_price)
 
-        balance_manager.commit_balance(amount, current_price)
+        # Aquí puedes agregar la lógica de la API real para colocar la orden
+        # Por ahora, simulamos una orden exitosa
+        order_id = str(uuid.uuid4())
+        operation = {
+            'orderId': order_id,
+            'size': amount,
+            'price': current_price,
+            'side': side,
+            'type': order_type,
+            'status': 'open',
+            'timestamp': str(datetime.datetime.now()),
+            'balance': balance_manager.get_balance()
+        }
+        balance_manager.add_operation(operation)
+        logging.info(f"Orden {side} colocada exitosamente. ID: {order_id}, Tamaño: {amount}, Precio: {current_price}.")
 
-        order_response = place_order(client_oid, symbol, side, order_type, amount)
-        if order_response and order_response.get('code') == '200000':
-            logging.info(f"Orden de {side} colocada por {amount} unidades en {symbol}.")
-            balance_manager.update_balance(amount, current_price, side)
-            order_id = order_response['data']['orderId']  # Establecer order_id
-            operation = {
-                'orderId': order_id,
-                'size': amount,
-                'price': current_price,
-                'side': side,
-                'type': order_type,
-                'status': 'open',
-                'timestamp': str(datetime.datetime.now()),
-                'balance': balance_manager.get_balance()
-            }
-            balance_manager.add_operation(operation)
-            logging.info(f"Detalles de la orden: ID {order_id}, Tamaño {amount}, Precio {current_price}")
-        else:
-            logging.error(f"Error al colocar la orden: {order_response}")
-            balance_manager.release_committed_balance(amount, current_price)
-
-            # Crear una orden ficticia si hay un error (como balance insuficiente)
-            order_id = client_oid
-            operation = {
-                'orderId': order_id,
-                'size': amount,
-                'price': current_price,
-                'side': side,
-                'type': order_type,
-                'status': 'fictitious',
-                'timestamp': str(datetime.datetime.now()),
-                'balance': balance_manager.get_balance()
-            }
-            balance_manager.add_operation(operation)
-            logging.info(f"Orden ficticia de {side} creada: ID {order_id}, Tamaño {amount}, Precio {current_price}")
+        # Actualizar el balance después de colocar la orden
+        balance_manager.update_balance(amount, current_price, side)
+        return True
     except Exception as e:
         logging.error(f"Error al colocar la orden: {e}")
         balance_manager.release_committed_balance(amount, current_price)
+        return False
+
 
 def trigger_manual_order(side, amount):
     symbol = SYMBOL
@@ -231,7 +219,7 @@ async def send_signal(signal):
 def notify_signal(signal):
     asyncio.run(send_signal(signal))
 
-def run_trading_bot():
+def run_trading_bot(use_artificial=True):
     balance_manager.clean_operations()  # Limpiar operaciones fantasma al inicio
 
     operations_logger = logging.getLogger('operations')
@@ -311,7 +299,7 @@ def run_trading_bot():
                 add_log_message("💼 Obteniendo balance de la cuenta...")
                 
                 # Obtener el balance de la cuenta
-                account_balance = get_account_balance(use_artificial=True)  # Cambia a False para el balance real
+                account_balance = get_account_balance(use_artificial=use_artificial)  # Cambia a False para el balance real
                 if account_balance:
                     logging.info(f"💰 Balance de la cuenta (USDT): {account_balance['USDT']}")
                     add_log_message(f"💰 Balance de la cuenta (USDT): {account_balance['USDT']}")
@@ -346,7 +334,7 @@ def run_trading_bot():
                                 entry_price = current_price
                                 stop_loss = entry_price * (1 - 0.02) if action == 'buy' else entry_price * (1 + 0.02)
                                 take_profit = entry_price * 1.05 if action == 'buy' else entry_price * 0.95
-                                position_size = calculate_trade_amount(account_balance, RISK_PER_TRADE, use_artificial=True)
+                                position_size = calculate_trade_amount(account_balance, RISK_PER_TRADE, use_artificial)
                                 if position_size and position_size >= 0.001:
                                     logging.info(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
                                     add_log_message(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
@@ -354,20 +342,20 @@ def run_trading_bot():
                                         logging.info("Venta detectada en mercado spot. No se permite venta en corto.")
                                         add_log_message("Venta detectada en mercado spot. No se permite venta en corto.")
                                     else:
-                                        place_order_with_logging(symbol, 'market', action, position_size)
-                                        order_id = str(uuid.uuid4())  # Asignar un nuevo ID de orden
-                                        operation = {
-                                            'orderId': order_id,
-                                            'size': position_size,
-                                            'price': entry_price,
-                                            'side': action,
-                                            'type': 'market',
-                                            'status': 'open',
-                                            'timestamp': str(datetime.datetime.now()),
-                                            'balance': account_balance
-                                        }
-                                        balance_manager.add_operation(operation)
-                                        balance_manager.update_balance(position_size, entry_price, action)  # Actualizar balance aquí
+                                        if place_order_with_logging(symbol, 'market', action, position_size):
+                                            order_id = str(uuid.uuid4())  # Asignar un nuevo ID de orden
+                                            operation = {
+                                                'orderId': order_id,
+                                                'size': position_size,
+                                                'price': entry_price,
+                                                'side': action,
+                                                'type': 'market',
+                                                'status': 'open',
+                                                'timestamp': str(datetime.datetime.now()),
+                                                'balance': account_balance
+                                            }
+                                            balance_manager.add_operation(operation)
+                                            balance_manager.update_balance(position_size, entry_price, action)  # Actualizar balance aquí
                                 else:
                                     logging.error(f"Trade amount {position_size} es menor que el mínimo requerido.")
                                     add_log_message(f"Trade amount {position_size} es menor que el mínimo requerido.")
@@ -402,11 +390,13 @@ if __name__ == "__main__":
     server_thread.start()
 
     # Ejecutar el bot de trading en un executor
-    trading_thread = threading.Thread(target=run_trading_bot)
+    trading_thread = threading.Thread(target=run_trading_bot, args=(True,))  # Cambia a False para el balance real
     trading_thread.start()
 
     trading_thread.join()
     server_thread.join()
+
+
 
 
 
