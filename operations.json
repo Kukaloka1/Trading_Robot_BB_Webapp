@@ -1,1 +1,14 @@
-[]
+[
+    {
+        "orderId": "bdcd7f63-dff7-47eb-8917-fb9dd733d188",
+        "size": 0.028888,
+        "price": 3375.06,
+        "side": "buy",
+        "type": "market",
+        "status": "open",
+        "timestamp": "2024-06-25 13:51:43.128701",
+        "balance": {
+            "USDT": 9750
+        }
+    }
+]

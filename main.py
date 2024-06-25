@@ -184,7 +184,8 @@ def check_trade_conditions(df, account_balance):
         )
 
         if buy_condition or sell_condition:
-            used_capital_percentage = (ARTIFICIAL_BALANCE['USDT'] - account_balance['USDT']) / ARTIFICIAL_BALANCE['USDT']
+            total_balance = account_balance.get('USDT', 0)
+            used_capital_percentage = (ARTIFICIAL_BALANCE['USDT'] - total_balance) / ARTIFICIAL_BALANCE['USDT']
             if used_capital_percentage <= MAX_CAPITAL_USAGE:
                 if buy_condition:
                     logging.info("Condiciones de compra detectadas.")
@@ -326,6 +327,8 @@ def run_trading_bot():
                     add_log_message(f"📈 Posiciones abiertas: {num_open_positions}, Capital invertido: {invested_percentage:.2f}% del balance inicial")
 
                     total_balance = account_balance.get('USDT', 0)
+                    if total_balance <= 0 and use_artificial:
+                        total_balance = ARTIFICIAL_BALANCE.get("USDT", 0)  # Usar balance artificial si está disponible
                     if total_balance <= 0:
                         logging.warning("El balance disponible es cero. No se puede realizar ninguna operación.")
                         add_log_message("El balance disponible es cero. No se puede realizar ninguna operación.")
@@ -343,7 +346,7 @@ def run_trading_bot():
                                 entry_price = current_price
                                 stop_loss = entry_price * (1 - 0.02) if action == 'buy' else entry_price * (1 + 0.02)
                                 take_profit = entry_price * 1.05 if action == 'buy' else entry_price * 0.95
-                                position_size = calculate_trade_amount(account_balance, RISK_PER_TRADE)
+                                position_size = calculate_trade_amount(account_balance, RISK_PER_TRADE, use_artificial=True)
                                 if position_size and position_size >= 0.001:
                                     logging.info(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
                                     add_log_message(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
@@ -404,6 +407,8 @@ if __name__ == "__main__":
 
     trading_thread.join()
     server_thread.join()
+
+
 
 
 

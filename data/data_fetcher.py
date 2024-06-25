@@ -75,7 +75,7 @@ def get_account_balance(use_artificial=True):
         logging.info("Fetching account balance")
         if use_artificial:
             logging.info("Using artificial balance.")
-            return {"USDT": ARTIFICIAL_BALANCE["USDT"]}
+            return {"USDT": ARTIFICIAL_BALANCE.get("USDT", 0)}
         else:
             balance = EXCHANGE.fetch_balance()
             if balance:
@@ -123,9 +123,14 @@ def get_increment(symbol):
         return None
 
 
-def calculate_trade_amount(balance, risk_per_trade):
+def calculate_trade_amount(balance, risk_per_trade, use_artificial=True):
     try:
         balance_usdt = balance.get('available_balance', 0)
+        
+        # Si estamos usando el balance artificial y el balance disponible es 0, usa el balance artificial
+        if use_artificial and balance_usdt <= 0:
+            balance_usdt = ARTIFICIAL_BALANCE.get('USDT', 0)
+        
         logging.info(f"💰Balance disponible en USDT: {balance_usdt}")
         if balance_usdt > 0:
             trade_amount_usdt = balance_usdt * risk_per_trade
@@ -157,6 +162,7 @@ def calculate_trade_amount(balance, risk_per_trade):
     except Exception as e:
         logging.error(f"Error calculating trade amount: {e}")
         return None
+
 
 
 
