@@ -4,12 +4,12 @@ import logging
 
 class BalanceManager:
 
-    def __init__(self, initial_balance, operations_file='operations.json'):
-        self.initial_balance = initial_balance
+    def __init__(self, artificial_balance, operations_file='operations.json'):
+        self.artificial_balance = artificial_balance['USDT']
         self.operations_file = operations_file
         self.committed_balance = 0
         self.load_operations()
-        self.balance = {'USDT': self.calculate_current_balance()}
+        self.balance = {'USDT': self.artificial_balance}
         self.operations_logger = logging.getLogger('operations')
 
     def load_operations(self):
@@ -24,32 +24,25 @@ class BalanceManager:
         with open(self.operations_file, 'w') as f:
             json.dump(self.operations, f, indent=4)
 
-    def calculate_current_balance(self):
-        total_balance = self.initial_balance
-        for op in self.operations:
-            if op['status'] == 'closed':
-                if op['side'] == 'buy':
-                    total_balance -= op['size'] * op['price']
-                elif op['side'] == 'sell':
-                    total_balance += op['size'] * op['price']
-        return total_balance
-
     def get_balance(self, current_price=None):
         available_balance = self.balance.get('USDT', 0)
-        total_committed = self.committed_balance
+        total_committed = 0
         unrealized_pnl = 0
 
         if current_price:
             for op in self.operations:
                 if op['status'] == 'open':
                     if op['side'] == 'buy':
+                        total_committed += op['size'] * op['price']
                         unrealized_pnl += (current_price - op['price']) * op['size']
                     elif op['side'] == 'sell':
+                        total_committed += op['size'] * op['price']
                         unrealized_pnl += (op['price'] - current_price) * op['size']
 
         total_balance = available_balance - total_committed + unrealized_pnl
+        logging.info(f"Balances calculados - Available: {available_balance}, Committed: {total_committed}, PnL: {unrealized_pnl}, Total: {total_balance}")
         return {
-            'available_balance': available_balance,
+            'available_balance': available_balance - total_committed,
             'total_committed': total_committed,
             'unrealized_pnl': unrealized_pnl,
             'total_balance': total_balance
@@ -86,15 +79,33 @@ class BalanceManager:
             existing_order.update(operation)
         else:
             self.operations.append(operation)
+
+        # Actualiza el balance en la operación
+        if operation['side'] == 'buy':
+            self.balance['USDT'] -= operation['size'] * operation['price']
+            self.balance['total_committed'] += operation['size'] * operation['price']
+        elif operation['side'] == 'sell':
+            self.balance['USDT'] += operation['size'] * operation['price']
+            self.balance['total_committed'] -= operation['size'] * operation['price']
+
+        operation['balance'] = self.get_balance().copy()
+
         self.save_operations()
         logging.info(f"Operation added/updated: {operation}")
         self.operations_logger.info(f"Operation: {operation}")
 
     def close_operation(self, order_id):
         for operation in self.operations:
-            if operation['orderId'] == order_id:
+            if operation['orderId'] == order_id and operation['status'] == 'open':
                 operation['status'] = 'closed'
+                if operation['side'] == 'buy':
+                    self.balance['USDT'] += operation['size'] * operation['price']
+                    self.balance['total_committed'] -= operation['size'] * operation['price']
+                elif operation['side'] == 'sell':
+                    self.balance['USDT'] -= operation['size'] * operation['price']
+                    self.balance['total_committed'] += operation['size'] * operation['price']
                 break
+
         self.save_operations()
         logging.info(f"Operation closed: {order_id}")
         self.operations_logger.info(f"Operation closed: {order_id}")

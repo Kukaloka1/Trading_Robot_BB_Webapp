@@ -40,22 +40,27 @@ def setup_logging():
         operations_logger.addHandler(operations_handler)
         operations_logger.setLevel(logging.INFO)
 
-def add_operation(new_operation, file_path='operations.json'):
-    try:
-        with open(file_path, 'r') as f:
-            operations = json.load(f)
-        
-        operations.append(new_operation)
-        
-        with open(file_path, 'w') as f:
-            json.dump(operations, f, indent=4)
-        
-        logging.getLogger('operations').info(f"Operación agregada: {new_operation}")
-        
-        # Formatear los logs después de agregar una nueva operación
-        format_operations_log(file_path)
-    except Exception as e:
-        logging.error(f"Error al agregar la operación: {e}")
+def add_operation(self, operation):
+    existing_order = next((op for op in self.operations if op['orderId'] == operation['orderId']), None)
+    if existing_order:
+        existing_order.update(operation)
+    else:
+        self.operations.append(operation)
+
+    # Actualiza el balance en la operación
+    if operation['side'] == 'buy':
+        self.balance['available_balance'] -= operation['size'] * operation['price']
+        self.balance['total_committed'] += operation['size'] * operation['price']
+    elif operation['side'] == 'sell':
+        self.balance['available_balance'] += operation['size'] * operation['price']
+        self.balance['total_committed'] -= operation['size'] * operation['price']
+
+    operation['balance'] = self.balance.copy()
+
+    self.save_operations()
+    logging.info(f"Operation added/updated: {operation}")
+    self.operations_logger.info(f"Operation: {operation}")
+
 
 def format_operations_log(file_path='operations.json'):
     try:

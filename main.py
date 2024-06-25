@@ -11,7 +11,7 @@ import threading
 from utils.logging_setup import setup_logging
 from data.data_fetcher import get_market_data, get_account_balance, calculate_trade_amount, place_order, get_open_orders, get_open_orders_futures, get_current_price, update_artificial_balance
 from indicators.technical_indicators import calculate_indicators
-from config import SYMBOL, ACCOUNT_TYPE, TIMEFRAME, LIMIT, RISK_PER_TRADE, SYMBOL_SPOT, EXCHANGE, MAX_CAPITAL_USAGE, SYMBOL_FUTURES, LEVERAGE, SYMBOL_MARGIN, MARGIN_TYPE, ARTIFICIAL_BALANCE, INITIAL_BALANCE, TRAILING_STOP_PCT, TAKE_PROFIT_MULTIPLIER
+from config import SYMBOL, ACCOUNT_TYPE, TIMEFRAME, LIMIT, RISK_PER_TRADE, SYMBOL_SPOT, EXCHANGE, MAX_CAPITAL_USAGE, SYMBOL_FUTURES, LEVERAGE, SYMBOL_MARGIN, MARGIN_TYPE, ARTIFICIAL_BALANCE, TRAILING_STOP_PCT, TAKE_PROFIT_MULTIPLIER
 from utils.gpt4_integration import get_gpt4_recommendation, prepare_historical_data
 from strategies.trading_strategy import manage_position_with_trail_stop, confirm_entry_with_gpt
 from kucoin_signature import get_kucoin_headers
@@ -27,7 +27,8 @@ class BufferHandler(logging.Handler):
         log_entry = self.format(record)
         add_log_message(log_entry)
         
-balance_manager = BalanceManager(initial_balance=INITIAL_BALANCE)
+balance_manager = BalanceManager(artificial_balance=ARTIFICIAL_BALANCE)
+
         
 
 def setup_logging():
@@ -202,7 +203,7 @@ def check_capital_usage(balance, position_size, max_usage):
     if used_percentage > max_usage:
         logging.warning(f"Capital utilizado excede el {max_usage * 100:.2f}% del balance total. Deteniendo operaciones.")
         return False
-    return True
+  
 
 async def send_signal(signal):
     try:
@@ -295,30 +296,20 @@ def run_trading_bot(use_artificial=True):
                 add_log_message("💼 Obteniendo balance de la cuenta...")
                 
                 # Obtener el balance de la cuenta
-                account_balance = get_account_balance(use_artificial=use_artificial)  # Cambia a False para el balance real
+                account_balance = balance_manager.get_balance(current_price=current_price)
                 if account_balance:
-                    logging.info(f"💰 Balance de la cuenta (USDT): {account_balance['USDT']}")
-                    add_log_message(f"💰 Balance de la cuenta (USDT): {account_balance['USDT']}")
+                    logging.info(f"💰 Balance de la cuenta (USDT): {account_balance['available_balance']}")
+                    add_log_message(f"💰 Balance de la cuenta (USDT): {account_balance['available_balance']}")
+                    logging.info(f"📈 Posiciones abiertas: {len(balance_manager.get_operations())}, Capital invertido: {account_balance['total_committed']:.2f} USDT")
+                    add_log_message(f"📈 Posiciones abiertas: {len(balance_manager.get_operations())}, Capital invertido: {account_balance['total_committed']:.2f} USDT")
 
-                    # Añadir logging de posiciones abiertas y porcentaje del capital inicial
-                    open_orders = balance_manager.get_operations()
-                    open_positions = [order for order in open_orders if order.get('status') == 'open']
-                    num_open_positions = len(open_positions)
-                    total_invested = sum([order['size'] * order['price'] for order in open_positions])
-                    invested_percentage = (total_invested / INITIAL_BALANCE) * 100
-
-                    logging.info(f"📈 Posiciones abiertas: {num_open_positions}, Capital invertido: {invested_percentage:.2f}% del balance inicial")
-                    add_log_message(f"📈 Posiciones abiertas: {num_open_positions}, Capital invertido: {invested_percentage:.2f}% del balance inicial")
-
-                    total_balance = account_balance.get('USDT', 0)
-                    if total_balance <= 0 and use_artificial:
-                        total_balance = ARTIFICIAL_BALANCE.get("USDT", 0)  # Usar balance artificial si está disponible
+                    total_balance = account_balance.get('total_balance', 0)
                     if total_balance <= 0:
                         logging.warning("El balance disponible es cero. No se puede realizar ninguna operación.")
                         add_log_message("El balance disponible es cero. No se puede realizar ninguna operación.")
                         time.sleep(300)
                         continue
-                    capital_usado = sum([float(order['size']) * float(order['price']) for order in open_orders if order['side'] in ['buy', 'sell']])
+                    capital_usado = account_balance.get('total_committed', 0)
                     if capital_usado >= total_balance * MAX_CAPITAL_USAGE:
                         logging.warning(f"Uso de capital máximo alcanzado: {capital_usado} USDT de {total_balance} USDT.")
                         add_log_message(f"Uso de capital máximo alcanzado: {capital_usado} USDT de {total_balance} USDT.")
@@ -349,7 +340,7 @@ def run_trading_bot(use_artificial=True):
                                 entry_price = current_price
                                 stop_loss = entry_price * (1 - 0.02) if action == 'buy' else entry_price * (1 + 0.02)
                                 take_profit = entry_price * 1.05 if action == 'buy' else entry_price * 0.95
-                                position_size = calculate_trade_amount(account_balance, RISK_PER_TRADE, use_artificial)
+                                position_size = calculate_trade_amount(account_balance, RISK_PER_TRADE)
                                 if position_size and position_size >= 0.001:
                                     logging.info(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
                                     add_log_message(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
@@ -392,14 +383,13 @@ def run_trading_bot(use_artificial=True):
         add_log_message("🕒 Esperando 5 minutos antes de la siguiente ejecución.")
         time.sleep(300)
 
-
 if __name__ == "__main__":
     setup_logging()
     logging.info("Iniciando el bot de trading y el servidor WebSocket")
     add_log_message("Iniciando el bot de trading y el servidor WebSocket")
 
     # Crear una instancia de BalanceManager y formatear operations.json
-    balance_manager = BalanceManager(initial_balance=INITIAL_BALANCE)
+    balance_manager = BalanceManager(artificial_balance=ARTIFICIAL_BALANCE)
     balance_manager.format_operations()
 
     # Iniciar el servidor WebSocket en el hilo principal
@@ -407,11 +397,13 @@ if __name__ == "__main__":
     server_thread.start()
 
     # Ejecutar el bot de trading en un executor
-    trading_thread = threading.Thread(target=run_trading_bot, args=(True,))  # Cambia a False para el balance real
+    trading_thread = threading.Thread(target=run_trading_bot, args=(True,))
     trading_thread.start()
 
     trading_thread.join()
     server_thread.join()
+
+
 
 
 
