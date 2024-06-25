@@ -5,7 +5,7 @@ from indicators.technical_indicators import calculate_indicators
 from patterns.price_action_patterns import is_pin_bar, is_bullish_engulfing, is_bearish_engulfing
 from utils.gpt4_integration import get_gpt4_recommendation
 from config import TRAILING_STOP_PCT, TAKE_PROFIT_MULTIPLIER, TIMEFRAME_SCALING_FACTORS, TIMEFRAME, RISK_PER_TRADE, SYMBOL, LIMIT
-
+from balance_manager import BalanceManager
 
 # Definir los pesos para cada factor
 weights = {
@@ -199,51 +199,65 @@ def run_trading_strategy():
         logging.error("Failed to fetch market data. Trading strategy execution aborted.")
 
 
-def manage_position_with_trail_stop(df, index, in_position, entry_price, stop_loss, take_profit, symbol, position_size, order_id, trailing_stop_pct):
-    current_price = df.iloc[index]['close']
-    scaling_factor = TIMEFRAME_SCALING_FACTORS.get(TIMEFRAME, 1.0)  # Obtiene el factor de escala para el timeframe actual
-    trailing_stop_pct = trailing_stop_pct * scaling_factor
-    take_profit_multiplier = TAKE_PROFIT_MULTIPLIER * scaling_factor
+def manage_position_with_trail_stop(df, index, in_position, entry_price, stop_loss, take_profit, symbol, position_size, order_id, trailing_stop_pct, balance_manager):
+    try:
+        current_price = df.iloc[index]['close']
+        scaling_factor = TIMEFRAME_SCALING_FACTORS.get(TIMEFRAME, 1.0)  # Obtiene el factor de escala para el timeframe actual
+        trailing_stop_pct = trailing_stop_pct * scaling_factor
+        take_profit_multiplier = TAKE_PROFIT_MULTIPLIER * scaling_factor
 
-    logging.info(f"Gestionando posición {'buy' if in_position == 'buy' else 'sell'} en el índice {index}. Precio actual: {current_price}. ID de la orden: {order_id}")
+        logging.info(f"Gestionando posición {'buy' if in_position == 'buy' else 'sell'} en el índice {index}. Precio actual: {current_price}. ID de la orden: {order_id}")
 
-    if in_position == 'buy':
-        new_stop_loss = current_price * (1 - trailing_stop_pct)  # Ajuste dinámico del Stop Loss
-        stop_loss = max(stop_loss, new_stop_loss)  # Solo ajustamos hacia arriba el Stop Loss
-        if take_profit is None:  # Inicializa el Take Profit si no está configurado
-            take_profit = entry_price * take_profit_multiplier  # Configura el Take Profit según el multiplicador
-        logging.info(f"Nuevo stop loss calculado para posición larga: {new_stop_loss}. Stop loss ajustado: {stop_loss}. Take profit: {take_profit}")
+        if in_position == 'buy':
+            new_stop_loss = current_price * (1 - trailing_stop_pct)  # Ajuste dinámico del Stop Loss
+            stop_loss = max(stop_loss, new_stop_loss)  # Solo ajustamos hacia arriba el Stop Loss
+            if take_profit is None:  # Inicializa el Take Profit si no está configurado
+                take_profit = entry_price * take_profit_multiplier  # Configura el Take Profit según el multiplicador
+            logging.info(f"Nuevo stop loss calculado para posición larga: {new_stop_loss}. Stop loss ajustado: {stop_loss}. Take profit: {take_profit}")
 
-        if current_price >= take_profit:
-            log_trade('Exit Buy', symbol, current_price, position_size, df.iloc[index]['timestamp'])
-            place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='sell', order_type='market', size=position_size)
-            in_position = False
-        elif current_price <= stop_loss:
-            log_trade('Exit Buy - Stop Loss', symbol, current_price, position_size, df.iloc[index]['timestamp'])
-            place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='sell', order_type='market', size=position_size)
-            in_position = False
-        else:
-            logging.info(f"Trailing stop activo. Precio actual: {current_price}, Stop loss actual: {stop_loss}, Take profit: {take_profit}. ID de la orden: {order_id}")
+            if current_price >= take_profit:
+                log_trade('Exit Buy', symbol, current_price, position_size, df.iloc[index]['timestamp'])
+                place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='sell', order_type='market', size=position_size)
+                balance_manager.close_operation(order_id)
+                balance_manager.update_balance(position_size, current_price, 'sell')  # Actualiza el balance
+                in_position = False
+            elif current_price <= stop_loss:
+                log_trade('Exit Buy - Stop Loss', symbol, current_price, position_size, df.iloc[index]['timestamp'])
+                place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='sell', order_type='market', size=position_size)
+                balance_manager.close_operation(order_id)
+                balance_manager.update_balance(position_size, current_price, 'sell')  # Actualiza el balance
+                in_position = False
+            else:
+                logging.info(f"Trailing stop activo. Precio actual: {current_price}, Stop loss actual: {stop_loss}, Take profit: {take_profit}. ID de la orden: {order_id}")
 
-    elif in_position == 'sell':
-        new_stop_loss = current_price * (1 + trailing_stop_pct)  # Ajuste dinámico del Stop Loss
-        stop_loss = min(stop_loss, new_stop_loss)  # Solo ajustamos hacia abajo el Stop Loss
-        if take_profit is None:  # Inicializa el Take Profit si no está configurado
-            take_profit = entry_price * (2 - take_profit_multiplier)  # Configura el Take Profit según el multiplicador inverso
-        logging.info(f"Nuevo stop loss calculado para posición corta: {new_stop_loss}. Stop loss ajustado: {stop_loss}. Take profit: {take_profit}")
+        elif in_position == 'sell':
+            new_stop_loss = current_price * (1 + trailing_stop_pct)  # Ajuste dinámico del Stop Loss
+            stop_loss = min(stop_loss, new_stop_loss)  # Solo ajustamos hacia abajo el Stop Loss
+            if take_profit is None:  # Inicializa el Take Profit si no está configurado
+                take_profit = entry_price * (2 - take_profit_multiplier)  # Configura el Take Profit según el multiplicador inverso
+            logging.info(f"Nuevo stop loss calculado para posición corta: {new_stop_loss}. Stop loss ajustado: {stop_loss}. Take profit: {take_profit}")
 
-        if current_price <= take_profit:
-            log_trade('Exit Sell', symbol, current_price, position_size, df.iloc[index]['timestamp'])
-            place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='buy', order_type='market', size=position_size)
-            in_position = False
-        elif current_price >= stop_loss:
-            log_trade('Exit Sell - Stop Loss', symbol, current_price, position_size, df.iloc[index]['timestamp'])
-            place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='buy', order_type='market', size=position_size)
-            in_position = False
-        else:
-            logging.info(f"Trailing stop activo. Precio actual: {current_price}, Stop loss actual: {stop_loss}, Take profit: {take_profit}. ID de la orden: {order_id}")
+            if current_price <= take_profit:
+                log_trade('Exit Sell', symbol, current_price, position_size, df.iloc[index]['timestamp'])
+                place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='buy', order_type='market', size=position_size)
+                balance_manager.close_operation(order_id)
+                balance_manager.update_balance(position_size, current_price, 'buy')  # Actualiza el balance
+                in_position = False
+            elif current_price >= stop_loss:
+                log_trade('Exit Sell - Stop Loss', symbol, current_price, position_size, df.iloc[index]['timestamp'])
+                place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='buy', order_type='market', size=position_size)
+                balance_manager.close_operation(order_id)
+                balance_manager.update_balance(position_size, current_price, 'buy')  # Actualiza el balance
+                in_position = False
+            else:
+                logging.info(f"Trailing stop activo. Precio actual: {current_price}, Stop loss actual: {stop_loss}, Take profit: {take_profit}. ID de la orden: {order_id}")
 
-    return in_position, stop_loss
+        return in_position, stop_loss
+    except Exception as e:
+        logging.error(f"Error al gestionar la posición: {e}")
+        return in_position, stop_loss
+
+
 
 
 

@@ -176,7 +176,7 @@ def check_trade_conditions(df, account_balance):
             used_capital_percentage = (ARTIFICIAL_BALANCE['USDT'] - total_balance) / ARTIFICIAL_BALANCE['USDT']
             if used_capital_percentage <= MAX_CAPITAL_USAGE:
                 if buy_condition:
-                    logging.info("Condiciones de compra detectadas.")
+                    logging.info("💥COMPRA DETECTADA💥")
                     return 'buy'
                 elif sell_condition:
                     logging.info("Condiciones de venta detectadas.")
@@ -360,7 +360,7 @@ def run_trading_bot(use_artificial=True):
                                     logging.error(f"Trade amount {position_size} es menor que el mínimo requerido.")
                                     add_log_message(f"Trade amount {position_size} es menor que el mínimo requerido.")
                         else:
-                            in_position, stop_loss = manage_position_with_trail_stop(df, -1, in_position, entry_price, stop_loss, take_profit, symbol, position_size, order_id, trailing_stop_pct)
+                            in_position, stop_loss = manage_position_with_trail_stop(df, -1, in_position, entry_price, stop_loss, take_profit, symbol, position_size, order_id, trailing_stop_pct, balance_manager)
                             if in_position == 'closed':
                                 balance_manager.close_operation(order_id)
                                 balance_manager.update_balance(position_size, entry_price, 'sell')  # Actualizar balance aquí
@@ -395,6 +395,7 @@ if __name__ == "__main__":
 
     trading_thread.join()
     server_thread.join()
+
 
 
 

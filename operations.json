@@ -1,12 +1,27 @@
 [
     {
-        "orderId": "bdcd7f63-dff7-47eb-8917-fb9dd733d188",
-        "size": 0.028888,
-        "price": 3375.06,
+        "orderId": "4e37c936-8c8a-4e39-bf82-363990418c6b",
+        "size": 0.001594,
+        "price": 61146.4,
         "side": "buy",
         "type": "market",
         "status": "open",
-        "timestamp": "2024-06-25 13:51:43.128701",
+        "timestamp": "2024-06-25 14:20:44.452325",
+        "balance": {
+            "available_balance": 7500,
+            "total_committed": 97.4673616,
+            "unrealized_pnl": 0,
+            "total_balance": 7402.5326384
+        }
+    },
+    {
+        "orderId": "e7884209-76de-4b46-b811-3158dc256df4",
+        "size": 0.001594,
+        "price": 61139.7,
+        "side": "buy",
+        "type": "market",
+        "status": "open",
+        "timestamp": "2024-06-25 14:20:44.454461",
         "balance": {
             "USDT": 9750
         }
