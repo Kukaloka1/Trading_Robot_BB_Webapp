@@ -11,7 +11,7 @@ import threading
 from utils.logging_setup import setup_logging
 from data.data_fetcher import get_market_data, get_account_balance, calculate_trade_amount, place_order, get_open_orders, get_open_orders_futures, get_current_price, update_artificial_balance
 from indicators.technical_indicators import calculate_indicators
-from config import SYMBOL, ACCOUNT_TYPE, TIMEFRAME, LIMIT, RISK_PER_TRADE, SYMBOL_SPOT, EXCHANGE, MAX_CAPITAL_USAGE, SYMBOL_FUTURES, LEVERAGE, SYMBOL_MARGIN, MARGIN_TYPE, ARTIFICIAL_BALANCE
+from config import SYMBOL, ACCOUNT_TYPE, TIMEFRAME, LIMIT, RISK_PER_TRADE, SYMBOL_SPOT, EXCHANGE, MAX_CAPITAL_USAGE, SYMBOL_FUTURES, LEVERAGE, SYMBOL_MARGIN, MARGIN_TYPE, ARTIFICIAL_BALANCE, INITIAL_BALANCE, TRAILING_STOP_PCT, TAKE_PROFIT_MULTIPLIER
 from utils.gpt4_integration import get_gpt4_recommendation, prepare_historical_data
 from strategies.trading_strategy import manage_position_with_trail_stop, confirm_entry_with_gpt
 from kucoin_signature import get_kucoin_headers
@@ -19,7 +19,6 @@ from config import KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE
 from kucoin_requests import BASE_URL_FUTURES, get_open_orders_margin, BASE_URL_MARGIN
 from stream_trading.stream_logs import run_server, add_log_message
 from balance_manager import BalanceManager
-from config import INITIAL_BALANCE
 
 print("💰โค้ดนี้จะทำให้ฉันเป็นเศรษฐี, สำเร็จแล้ว ด้วยความช่วยเหลือจาก AI💰")
 
@@ -226,13 +225,6 @@ def run_trading_bot(use_artificial=True):
     logging.info("🚀 Bot de trading iniciado. Buscando oportunidades de trading.")
 
     logging_thread = None
-    in_position = False
-    entry_price = 0
-    stop_loss = 0
-    take_profit = 0
-    position_size = 0
-    order_id = None
-    trailing_stop_pct = 0.02
 
     if ACCOUNT_TYPE == 'futures':
         symbol = SYMBOL_FUTURES
@@ -249,20 +241,24 @@ def run_trading_bot(use_artificial=True):
 
     # Recuperación de órdenes activas
     active_orders = [order for order in balance_manager.get_operations() if order.get('status') in ['open', 'active']]
+    
+    positions = []
     if active_orders:
         for order in active_orders:
             if order['side'] in ['buy', 'sell']:
                 operations_logger.info(f"Orden abierta recuperada: ID {order['orderId']}")
-                in_position = 'buy' if order['side'] == 'buy' else 'sell'
-                entry_price = float(order['price'])
-                stop_loss = entry_price * (1 - 0.02) if in_position == 'buy' else entry_price * (1 + 0.02)
-                take_profit = entry_price * 1.05 if in_position == 'buy' else entry_price * 0.95
-                position_size = float(order['size'])
-                order_id = order['orderId']
+                position = {
+                    'in_position': 'buy' if order['side'] == 'buy' else 'sell',
+                    'entry_price': float(order['price']),
+                    'stop_loss': float(order['price']) * (1 - 0.02) if order['side'] == 'buy' else float(order['price']) * (1 + 0.02),
+                    'take_profit': float(order['price']) * 1.05 if order['side'] == 'buy' else float(order['price']) * 0.95,
+                    'position_size': float(order['size']),
+                    'order_id': order['orderId']
+                }
+                positions.append(position)
                 current_price = get_current_price(symbol)
-                logging.info(f"Recuperada orden {in_position} ID {order_id} con precio de entrada {entry_price}")
-                add_log_message(f"Recuperada orden {in_position} ID {order_id} con precio de entrada {entry_price}")
-                break
+                logging.info(f"Recuperada orden {position['in_position']} ID {position['order_id']} con precio de entrada {position['entry_price']}")
+                add_log_message(f"Recuperada orden {position['in_position']} ID {position['order_id']} con precio de entrada {position['entry_price']}")
     else:
         logging.info("📭 No hay órdenes abiertas.")
         add_log_message("📭 No hay órdenes abiertas.")
@@ -327,10 +323,29 @@ def run_trading_bot(use_artificial=True):
                         logging.warning(f"Uso de capital máximo alcanzado: {capital_usado} USDT de {total_balance} USDT.")
                         add_log_message(f"Uso de capital máximo alcanzado: {capital_usado} USDT de {total_balance} USDT.")
                     else:
-                        if not in_position:
+                        for position in positions:
+                            in_position, stop_loss = manage_position_with_trail_stop(
+                                df, 
+                                -1, 
+                                position['in_position'], 
+                                position['entry_price'], 
+                                position['stop_loss'], 
+                                position['take_profit'], 
+                                symbol, 
+                                position['position_size'], 
+                                position['order_id'], 
+                                TRAILING_STOP_PCT,  # Usa la variable correctamente importada
+                                balance_manager
+                            )
+                            if in_position == 'closed':
+                                balance_manager.close_operation(position['order_id'])
+                                balance_manager.update_balance(position['position_size'], current_price, 'sell')  # Actualizar balance aquí
+                            logging.info(f"Gestionando posición {in_position}. Stop loss: {stop_loss}, Take profit: {position['take_profit']}.")
+                            add_log_message(f"Gestionando posición {in_position}. Stop loss: {stop_loss}, Take profit: {position['take_profit']}.")
+
+                        if not any(position['in_position'] for position in positions):
                             action = check_trade_conditions(df, account_balance)
                             if action:
-                                in_position = action
                                 entry_price = current_price
                                 stop_loss = entry_price * (1 - 0.02) if action == 'buy' else entry_price * (1 + 0.02)
                                 take_profit = entry_price * 1.05 if action == 'buy' else entry_price * 0.95
@@ -356,16 +371,17 @@ def run_trading_bot(use_artificial=True):
                                             }
                                             balance_manager.add_operation(operation)
                                             balance_manager.update_balance(position_size, entry_price, action)  # Actualizar balance aquí
+                                            positions.append({
+                                                'in_position': action,
+                                                'entry_price': entry_price,
+                                                'stop_loss': stop_loss,
+                                                'take_profit': take_profit,
+                                                'position_size': position_size,
+                                                'order_id': order_id
+                                            })
                                 else:
                                     logging.error(f"Trade amount {position_size} es menor que el mínimo requerido.")
                                     add_log_message(f"Trade amount {position_size} es menor que el mínimo requerido.")
-                        else:
-                            in_position, stop_loss = manage_position_with_trail_stop(df, -1, in_position, entry_price, stop_loss, take_profit, symbol, position_size, order_id, trailing_stop_pct, balance_manager)
-                            if in_position == 'closed':
-                                balance_manager.close_operation(order_id)
-                                balance_manager.update_balance(position_size, entry_price, 'sell')  # Actualizar balance aquí
-                            logging.info(f"Gestionando posición {in_position}. Stop loss: {stop_loss}, Take profit: {take_profit}.")
-                            add_log_message(f"Gestionando posición {in_position}. Stop loss: {stop_loss}, Take profit: {take_profit}.")
             else:
                 logging.error("Error al obtener los datos del mercado.")
                 add_log_message("Error al obtener los datos del mercado.")
@@ -375,6 +391,7 @@ def run_trading_bot(use_artificial=True):
         logging.info("🕒 Esperando 5 minutos antes de la siguiente ejecución.")
         add_log_message("🕒 Esperando 5 minutos antes de la siguiente ejecución.")
         time.sleep(300)
+
 
 if __name__ == "__main__":
     setup_logging()
@@ -395,6 +412,7 @@ if __name__ == "__main__":
 
     trading_thread.join()
     server_thread.join()
+
 
 
 
