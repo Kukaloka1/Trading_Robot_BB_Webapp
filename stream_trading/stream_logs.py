@@ -13,6 +13,17 @@ log_buffer = deque(maxlen=100)  # Limitar el tamaño del buffer a 100
 def add_log_message(message):
     log_buffer.append(message)
 
+class ExcludeWebSocketFilter(logging.Filter):
+    def filter(self, record):
+        # Filtrar solo los mensajes de conexión WebSocket
+        return not (
+            'connection closed' in record.getMessage() or
+            'Nueva conexión WebSocket establecida' in record.getMessage() or
+            'Conexión WebSocket cerrada' in record.getMessage() or
+            'connection open' in record.getMessage() or
+            'Conexión WebSocket finalizada' in record.getMessage()
+        )
+
 async def send_logs(websocket, path):
     logging.info("Nueva conexión WebSocket establecida")
     try:
@@ -36,10 +47,18 @@ async def start_server():
     await server.wait_closed()
 
 def run_server():
+    # Aplicar el filtro personalizado
+    exclude_websocket_filter = ExcludeWebSocketFilter()
+    for handler in logging.getLogger('').handlers:
+        handler.addFilter(exclude_websocket_filter)
+
     asyncio.run(start_server())
 
 if __name__ == "__main__":
     run_server()
+
+
+
 
 
 

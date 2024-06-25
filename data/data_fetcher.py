@@ -11,6 +11,7 @@ from config import EXCHANGE, SYMBOL, RISK_PER_TRADE, SYMBOL_SPOT, ACCOUNT_TYPE, 
 from kucoin_requests import KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE
 from kucoin_requests import get_kucoin_headers, get_base_url
 
+
 def log_account_type(account_type):
     if account_type == 'futures':
         logging.info("Operando en cuenta de futuros.")
@@ -88,6 +89,7 @@ def get_account_balance(use_artificial=True):
         logging.error(f"Error fetching account balance: {e}")
         return {}
 
+
     
 def update_artificial_balance(order_response, side):
     try:
@@ -99,7 +101,8 @@ def update_artificial_balance(order_response, side):
             ARTIFICIAL_BALANCE['USDT'] += float(order['size']) * float(order['price'])
         logging.info(f"Updated artificial balance: {ARTIFICIAL_BALANCE}")
     except Exception as e:
-        logging.error(f"Error updating artificial balance: {e}")    
+        logging.error(f"Error updating artificial balance: {e}")
+  
 
 def get_increment(symbol):
     try:
@@ -119,7 +122,7 @@ def get_increment(symbol):
 
 def calculate_trade_amount(balance, risk_per_trade):
     try:
-        balance_usdt = balance.get('USDT', 0)
+        balance_usdt = balance.get('available_balance', 0)
         logging.info(f"💰Balance disponible en USDT: {balance_usdt}")
         if balance_usdt > 0:
             trade_amount_usdt = balance_usdt * risk_per_trade
@@ -155,6 +158,7 @@ def calculate_trade_amount(balance, risk_per_trade):
 
 
 
+
 def place_order(client_oid, symbol, side, order_type, size, price=None, leverage=None):
     base_url = get_base_url()
     endpoint = '/api/v1/margin/order' if ACCOUNT_TYPE == 'margin' else '/api/v1/orders'
@@ -176,6 +180,7 @@ def place_order(client_oid, symbol, side, order_type, size, price=None, leverage
     
     response = requests.post(base_url + endpoint, headers=headers, json=body)
     return response.json()
+
 
 
 
@@ -306,6 +311,7 @@ def get_current_price(symbol):
     except Exception as e:
         logging.error(f"Error al obtener el precio actual: {e}")
         return None
+
 
 
 

@@ -5,7 +5,7 @@ import websockets
 import datetime
 import json
 import uuid
-import sys  
+import sys
 import logging
 import threading
 from utils.logging_setup import setup_logging
@@ -19,13 +19,9 @@ from config import KUCOIN_API_KEY, KUCOIN_API_SECRET, KUCOIN_API_PASSPHRASE
 from kucoin_requests import BASE_URL_FUTURES, get_open_orders_margin, BASE_URL_MARGIN
 from stream_trading.stream_logs import run_server, add_log_message
 from balance_manager import BalanceManager
-from config import INITIAL_BALANCE, SYMBOL
-
+from config import INITIAL_BALANCE
 
 print("💰โค้ดนี้จะทำให้ฉันเป็นเศรษฐี, สำเร็จแล้ว ด้วยความช่วยเหลือจาก AI💰")
-
-balance_manager = BalanceManager(INITIAL_BALANCE)
-
 
 class BufferHandler(logging.Handler):
     def emit(self, record):
@@ -63,7 +59,6 @@ def set_leverage(symbol, leverage, margin_type=None):
     except Exception as e:
         logging.error(f"Error crítico al configurar el apalancamiento: {e}")
 
-
 def log_indicators(df):
     while True:
         try:
@@ -79,7 +74,6 @@ def log_order_details(order_response, balance):
         logging.info(f"Detalles de la orden: ID {order['orderId']}, Tamaño {order['size']}, Precio {order['price']}, Balance {balance}")
     except Exception as e:
         logging.error(f"Error registrando los detalles de la orden: {e}")
-
 
 def place_order_with_logging(symbol, order_type, side, amount):
     try:
@@ -105,8 +99,9 @@ def place_order_with_logging(symbol, order_type, side, amount):
         if order_response and order_response.get('code') == '200000':
             logging.info(f"Orden de {side} colocada por {amount} unidades en {symbol}.")
             balance_manager.update_balance(amount, current_price, side)
+            order_id = order_response['data']['orderId']  # Establecer order_id
             operation = {
-                'orderId': order_response['data']['orderId'],
+                'orderId': order_id,
                 'size': amount,
                 'price': current_price,
                 'side': side,
@@ -116,22 +111,13 @@ def place_order_with_logging(symbol, order_type, side, amount):
                 'balance': balance_manager.get_balance()
             }
             balance_manager.add_operation(operation)
-            log_order_details(order_response, balance_manager.get_balance())
+            logging.info(f"Detalles de la orden: ID {order_id}, Tamaño {amount}, Precio {current_price}")
         else:
             logging.error(f"Error al colocar la orden: {order_response}")
             balance_manager.release_committed_balance(amount, current_price)
 
             # Crear una orden ficticia si hay un error (como balance insuficiente)
             order_id = client_oid
-            order_response = {
-                'data': {
-                    'orderId': order_id,
-                    'size': amount,
-                    'price': current_price
-                }
-            }
-
-            balance_manager.update_balance(amount, current_price, side)
             operation = {
                 'orderId': order_id,
                 'size': amount,
@@ -143,21 +129,17 @@ def place_order_with_logging(symbol, order_type, side, amount):
                 'balance': balance_manager.get_balance()
             }
             balance_manager.add_operation(operation)
-            logging.info(f"Orden ficticia de {side} creada: ID {order_id}, Tamaño {amount}, Precio {order_response['data']['price']}")
-            log_order_details(order_response, balance_manager.get_balance())
+            logging.info(f"Orden ficticia de {side} creada: ID {order_id}, Tamaño {amount}, Precio {current_price}")
     except Exception as e:
         logging.error(f"Error al colocar la orden: {e}")
         balance_manager.release_committed_balance(amount, current_price)
-        
-        
+
 def trigger_manual_order(side, amount):
     symbol = SYMBOL
     order_type = 'market'
     logging.info(f"Balance antes de la orden: {balance_manager.get_balance()}")
     place_order_with_logging(symbol, order_type, side, amount)
     logging.info(f"Balance después de la orden: {balance_manager.get_balance()}")
-       
-        
 
 def check_trade_conditions(df, account_balance):
     try:
@@ -213,7 +195,6 @@ def check_trade_conditions(df, account_balance):
         logging.error(f"Error al evaluar las condiciones de trading: {e}")
         return None
 
-
 def check_capital_usage(balance, position_size, max_usage):
     total_balance = balance['total'].get('USDT', 0)
     used_balance = balance['used'].get('USDT', 0)
@@ -243,27 +224,10 @@ def notify_signal(signal):
     asyncio.run(send_signal(signal))
 
 def run_trading_bot():
+    balance_manager.clean_operations()  # Limpiar operaciones fantasma al inicio
+
     operations_logger = logging.getLogger('operations')
     logging.info("🚀 Bot de trading iniciado. Buscando oportunidades de trading.")
-
-    if ACCOUNT_TYPE in ['futures', 'margin']:
-        try:
-            if ACCOUNT_TYPE == 'futures':
-                set_leverage(SYMBOL, LEVERAGE)
-                logging.info(f"📈 Apalancamiento configurado a {LEVERAGE}x para {SYMBOL}")
-                add_log_message(f"📈 Apalancamiento configurado a {LEVERAGE}x para {SYMBOL}")
-            elif ACCOUNT_TYPE == 'margin':
-                if MARGIN_TYPE == 'cross':
-                    logging.info("🔄 Operando en cuenta de margen tipo cross.")
-                    add_log_message("🔄 Operando en cuenta de margen tipo cross.")
-                elif MARGIN_TYPE == 'isolated':
-                    logging.info("🔒 Operando en cuenta de margen tipo isolated.")
-                    add_log_message("🔒 Operando en cuenta de margen tipo isolated.")
-                logging.info(f"🔧 El apalancamiento {LEVERAGE}x se configurará automáticamente en cada operación.")
-                add_log_message(f"🔧 El apalancamiento {LEVERAGE}x se configurará automáticamente en cada operación.")
-        except Exception as e:
-            logging.error(f"❌ Error crítico al configurar el apalancamiento: {e}")
-            add_log_message(f"❌ Error crítico al configurar el apalancamiento: {e}")
 
     logging_thread = None
     in_position = False
@@ -287,9 +251,10 @@ def run_trading_bot():
         logging.info("💹 Operando en cuenta spot.")
         add_log_message("💹 Operando en cuenta spot.")
 
-    open_orders = balance_manager.get_operations()
-    if open_orders:
-        for order in open_orders:
+    # Recuperación de órdenes activas
+    active_orders = [order for order in balance_manager.get_operations() if order.get('status') in ['open', 'active']]
+    if active_orders:
+        for order in active_orders:
             if order['side'] in ['buy', 'sell']:
                 operations_logger.info(f"Orden abierta recuperada: ID {order['orderId']}")
                 in_position = 'buy' if order['side'] == 'buy' else 'sell'
@@ -336,11 +301,22 @@ def run_trading_bot():
                 add_log_message(f"🤖 Recomendación GPT-4: Sentimiento {gpt4_recommendation['sentiment']}, Evaluación de Riesgo {gpt4_recommendation['risk_assessment']}")
                 logging.info("💼 Obteniendo balance de la cuenta...")
                 add_log_message("💼 Obteniendo balance de la cuenta...")
-                account_balance = balance_manager.get_balance()
+                account_balance = balance_manager.get_balance(current_price=current_price)
                 if account_balance:
-                    logging.info(f"💰 Balance de la cuenta (USDT): {account_balance['USDT']}")
-                    add_log_message(f"💰 Balance de la cuenta (USDT): {account_balance['USDT']}")
-                    total_balance = account_balance.get('USDT', 0)
+                    logging.info(f"💰 Balance de la cuenta (USDT): {account_balance['available_balance']}")
+                    add_log_message(f"💰 Balance de la cuenta (USDT): {account_balance['available_balance']}")
+
+                    # Añadir logging de posiciones abiertas y porcentaje del capital inicial
+                    open_orders = balance_manager.get_operations()
+                    open_positions = [order for order in open_orders if order.get('status') == 'open']
+                    num_open_positions = len(open_positions)
+                    total_invested = sum([order['size'] * order['price'] for order in open_positions])
+                    invested_percentage = (total_invested / INITIAL_BALANCE) * 100
+
+                    logging.info(f"📈 Posiciones abiertas: {num_open_positions}, Capital invertido: {invested_percentage:.2f}% del balance inicial")
+                    add_log_message(f"📈 Posiciones abiertas: {num_open_positions}, Capital invertido: {invested_percentage:.2f}% del balance inicial")
+
+                    total_balance = account_balance.get('total_balance', 0)
                     if total_balance <= 0:
                         logging.warning("El balance disponible es cero. No se puede realizar ninguna operación.")
                         add_log_message("El balance disponible es cero. No se puede realizar ninguna operación.")
@@ -360,21 +336,36 @@ def run_trading_bot():
                                 take_profit = entry_price * 1.05 if action == 'buy' else entry_price * 0.95
                                 position_size = calculate_trade_amount(account_balance, RISK_PER_TRADE)
                                 if position_size and position_size >= 0.001:
-                                    logging.info(f"🟢 Posición {action} abierta en {entry_price} con tamaño {position_size}.")
-                                    add_log_message(f"🟢 Posición {action} abierta en {entry_price} con tamaño {position_size}.")
+                                    logging.info(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
+                                    add_log_message(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
                                     if ACCOUNT_TYPE == 'spot' and action == 'sell':
-                                        logging.info("🚫 Venta detectada en mercado spot. No se permite venta en corto.")
-                                        add_log_message("🚫 Venta detectada en mercado spot. No se permite venta en corto.")
+                                        logging.info("Venta detectada en mercado spot. No se permite venta en corto.")
+                                        add_log_message("Venta detectada en mercado spot. No se permite venta en corto.")
                                     else:
                                         place_order_with_logging(symbol, 'market', action, position_size)
-                                        order_id = place_order_with_logging(symbol, 'market', action, position_size)
+                                        order_id = str(uuid.uuid4())  # Asignar un nuevo ID de orden
+                                        operation = {
+                                            'orderId': order_id,
+                                            'size': position_size,
+                                            'price': entry_price,
+                                            'side': action,
+                                            'type': 'market',
+                                            'status': 'open',
+                                            'timestamp': str(datetime.datetime.now()),
+                                            'balance': account_balance
+                                        }
+                                        balance_manager.add_operation(operation)
+                                        balance_manager.update_balance(position_size, entry_price, action)  # Actualizar balance aquí
                                 else:
                                     logging.error(f"Trade amount {position_size} es menor que el mínimo requerido.")
                                     add_log_message(f"Trade amount {position_size} es menor que el mínimo requerido.")
                         else:
-                            in_position, stop_loss, order_id = manage_position_with_trail_stop(df, -1, in_position, entry_price, stop_loss, take_profit, symbol, position_size, order_id, trailing_stop_pct)
-                            logging.info(f"🔄 Gestionando posición {in_position}. Stop loss: {stop_loss}, Take profit: {take_profit}.")
-                            add_log_message(f"🔄 Gestionando posición {in_position}. Stop loss: {stop_loss}, Take profit: {take_profit}.")
+                            in_position, stop_loss = manage_position_with_trail_stop(df, -1, in_position, entry_price, stop_loss, take_profit, symbol, position_size, order_id, trailing_stop_pct)
+                            if in_position == 'closed':
+                                balance_manager.close_operation(order_id)
+                                balance_manager.update_balance(position_size, entry_price, 'sell')  # Actualizar balance aquí
+                            logging.info(f"Gestionando posición {in_position}. Stop loss: {stop_loss}, Take profit: {take_profit}.")
+                            add_log_message(f"Gestionando posición {in_position}. Stop loss: {stop_loss}, Take profit: {take_profit}.")
             else:
                 logging.error("Error al obtener los datos del mercado.")
                 add_log_message("Error al obtener los datos del mercado.")
@@ -390,14 +381,22 @@ if __name__ == "__main__":
     logging.info("Iniciando el bot de trading y el servidor WebSocket")
     add_log_message("Iniciando el bot de trading y el servidor WebSocket")
 
+    # Crear una instancia de BalanceManager y formatear operations.json
+    balance_manager = BalanceManager(initial_balance=INITIAL_BALANCE)
+    balance_manager.format_operations()
+
+    # Iniciar el servidor WebSocket en el hilo principal
     server_thread = threading.Thread(target=run_server)
     server_thread.start()
 
+    # Ejecutar el bot de trading en un executor
     trading_thread = threading.Thread(target=run_trading_bot)
     trading_thread.start()
 
     trading_thread.join()
     server_thread.join()
+
+
 
 
 

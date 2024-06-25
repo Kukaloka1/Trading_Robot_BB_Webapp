@@ -2,6 +2,8 @@ import openai
 import logging
 import os
 import pandas as pd
+import tiktoken  # Importa tiktoken para contar los tokens
+
 
 # Configura tu clave de API
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -49,6 +51,12 @@ def get_gpt4_recommendation(historical_data, current_price, percentage_change_24
             f"Monthly Data Summary: {historical_data['monthly']}\n"
             f"Daily Data Summary: {historical_data['daily']}\n"
         )
+        
+        # Contar los tokens del prompt
+        enc = tiktoken.encoding_for_model("gpt-4")
+        num_tokens = len(enc.encode(prompt))
+        logging.info(f"Tokens en el prompt enviado: {num_tokens}")
+        
 
         response = openai.ChatCompletion.create(
             model="gpt-4",
