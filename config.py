@@ -30,8 +30,8 @@ TIMEFRAME_SCALING_FACTORS = {
 }
 
 # Parámetros para la gestión de trailing stop
-TRAILING_STOP_PCT = 0.02  # 0.5%
-TAKE_PROFIT_MULTIPLIER = 1.05  # 0.5% Take Profit
+TRAILING_STOP_PCT = 1.02  # 0.5%
+TAKE_PROFIT_MULTIPLIER = 0.02 # 0.5% Take Profit
 
 print(f"TRAILING_STOP_PCT: {TRAILING_STOP_PCT}")
 print(f"TAKE_PROFI_MULTIPLIER: {TAKE_PROFIT_MULTIPLIER}")
@@ -95,7 +95,7 @@ SYMBOL = symbol
 
 # Balance artificial en USDT
 ARTIFICIAL_BALANCE = {
-    "USDT": 9750
+    "USDT": 20000
 }
 
 # Exportar otras configuraciones

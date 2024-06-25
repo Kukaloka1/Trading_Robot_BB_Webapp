@@ -219,13 +219,13 @@ def manage_position_with_trail_stop(df, index, in_position, entry_price, stop_lo
                 log_trade('Exit Buy', symbol, current_price, position_size, df.iloc[index]['timestamp'])
                 place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='sell', order_type='market', size=position_size)
                 balance_manager.close_operation(order_id)
-                balance_manager.update_balance(position_size, current_price, 'sell')  # Actualiza el balance
+                balance_manager.update_balance(position_size, current_price, 'sell')
                 in_position = False
             elif current_price <= stop_loss:
                 log_trade('Exit Buy - Stop Loss', symbol, current_price, position_size, df.iloc[index]['timestamp'])
                 place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='sell', order_type='market', size=position_size)
                 balance_manager.close_operation(order_id)
-                balance_manager.update_balance(position_size, current_price, 'sell')  # Actualiza el balance
+                balance_manager.update_balance(position_size, current_price, 'sell')
                 in_position = False
             else:
                 logging.info(f"Trailing stop activo. Precio actual: {current_price}, Stop loss actual: {stop_loss}, Take profit: {take_profit}. ID de la orden: {order_id}")
@@ -241,13 +241,13 @@ def manage_position_with_trail_stop(df, index, in_position, entry_price, stop_lo
                 log_trade('Exit Sell', symbol, current_price, position_size, df.iloc[index]['timestamp'])
                 place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='buy', order_type='market', size=position_size)
                 balance_manager.close_operation(order_id)
-                balance_manager.update_balance(position_size, current_price, 'buy')  # Actualiza el balance
+                balance_manager.update_balance(position_size, current_price, 'buy')
                 in_position = False
             elif current_price >= stop_loss:
                 log_trade('Exit Sell - Stop Loss', symbol, current_price, position_size, df.iloc[index]['timestamp'])
                 place_order(client_oid=str(uuid.uuid4()), symbol=symbol, side='buy', order_type='market', size=position_size)
                 balance_manager.close_operation(order_id)
-                balance_manager.update_balance(position_size, current_price, 'buy')  # Actualiza el balance
+                balance_manager.update_balance(position_size, current_price, 'buy')
                 in_position = False
             else:
                 logging.info(f"Trailing stop activo. Precio actual: {current_price}, Stop loss actual: {stop_loss}, Take profit: {take_profit}. ID de la orden: {order_id}")
@@ -256,6 +256,7 @@ def manage_position_with_trail_stop(df, index, in_position, entry_price, stop_lo
     except Exception as e:
         logging.error(f"Error al gestionar la posición: {e}")
         return in_position, stop_loss
+
 
 
 

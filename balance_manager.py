@@ -34,12 +34,16 @@ class BalanceManager:
                 if op['status'] == 'open':
                     if op['side'] == 'buy':
                         total_committed += op['size'] * op['price']
-                        unrealized_pnl += (current_price - op['price']) * op['size']
+                        pnl = (current_price - op['price']) * op['size']
+                        unrealized_pnl += pnl
+                        logging.info(f"Calculando PnL para operación BUY: Size={op['size']}, EntryPrice={op['price']}, CurrentPrice={current_price}, PnL={pnl} USDT")
                     elif op['side'] == 'sell':
                         total_committed += op['size'] * op['price']
-                        unrealized_pnl += (op['price'] - current_price) * op['size']
+                        pnl = (op['price'] - current_price) * op['size']
+                        unrealized_pnl += pnl
+                        logging.info(f"Calculando PnL para operación SELL: Size={op['size']}, EntryPrice={op['price']}, CurrentPrice={current_price}, PnL={pnl} USDT")
 
-        total_balance = available_balance - total_committed + unrealized_pnl
+        total_balance = available_balance + unrealized_pnl - total_committed
         logging.info(f"Balances calculados - Available: {available_balance}, Committed: {total_committed}, PnL: {unrealized_pnl}, Total: {total_balance}")
         return {
             'available_balance': available_balance - total_committed,
@@ -80,16 +84,6 @@ class BalanceManager:
         else:
             self.operations.append(operation)
 
-        # Actualiza el balance en la operación
-        if operation['side'] == 'buy':
-            self.balance['USDT'] -= operation['size'] * operation['price']
-            self.balance['total_committed'] += operation['size'] * operation['price']
-        elif operation['side'] == 'sell':
-            self.balance['USDT'] += operation['size'] * operation['price']
-            self.balance['total_committed'] -= operation['size'] * operation['price']
-
-        operation['balance'] = self.get_balance().copy()
-
         self.save_operations()
         logging.info(f"Operation added/updated: {operation}")
         self.operations_logger.info(f"Operation: {operation}")
@@ -98,12 +92,6 @@ class BalanceManager:
         for operation in self.operations:
             if operation['orderId'] == order_id and operation['status'] == 'open':
                 operation['status'] = 'closed'
-                if operation['side'] == 'buy':
-                    self.balance['USDT'] += operation['size'] * operation['price']
-                    self.balance['total_committed'] -= operation['size'] * operation['price']
-                elif operation['side'] == 'sell':
-                    self.balance['USDT'] -= operation['size'] * operation['price']
-                    self.balance['total_committed'] += operation['size'] * operation['price']
                 break
 
         self.save_operations()
@@ -123,7 +111,3 @@ class BalanceManager:
             operations = json.load(file)
         with open(self.operations_file, 'w') as file:
             json.dump(operations, file, indent=4)
-
-
-
-

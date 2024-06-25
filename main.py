@@ -88,7 +88,7 @@ def place_order_with_logging(symbol, order_type, side, amount):
         cost = amount * current_price
         logging.info(f"Intentando colocar orden: {side} {amount} unidades en {symbol} a {current_price} cada una (Costo: {cost} USDT).")
 
-        # Aquí vamos a simular la colocación de la orden
+        # Simulación de la colocación de la orden
         if side == 'buy':
             if not balance_manager.can_trade(amount, current_price, side):
                 logging.error(f"Balance insuficiente para colocar la orden de compra. Balance disponible: {balance_manager.get_balance()['available_balance']} USDT.")
@@ -100,8 +100,6 @@ def place_order_with_logging(symbol, order_type, side, amount):
                 return False
             balance_manager.commit_balance(amount, current_price)
 
-        # Aquí puedes agregar la lógica de la API real para colocar la orden
-        # Por ahora, simulamos una orden exitosa
         order_id = str(uuid.uuid4())
         operation = {
             'orderId': order_id,
@@ -111,18 +109,18 @@ def place_order_with_logging(symbol, order_type, side, amount):
             'type': order_type,
             'status': 'open',
             'timestamp': str(datetime.datetime.now()),
-            'balance': balance_manager.get_balance()
+            'balance': balance_manager.get_balance(current_price)
         }
         balance_manager.add_operation(operation)
         logging.info(f"Orden {side} colocada exitosamente. ID: {order_id}, Tamaño: {amount}, Precio: {current_price}.")
 
-        # Actualizar el balance después de colocar la orden
         balance_manager.update_balance(amount, current_price, side)
         return True
     except Exception as e:
         logging.error(f"Error al colocar la orden: {e}")
         balance_manager.release_committed_balance(amount, current_price)
         return False
+
 
 
 def trigger_manual_order(side, amount):
@@ -162,7 +160,7 @@ def check_trade_conditions(df, account_balance):
         )
 
         sell_condition = (
-            (account_balance['USDT'] == 'futures' and 
+            (account_balance['available_balance'] == 'futures' and 
              indicators['gpt4_sentiment'] == 'negative' and 
              indicators['gpt4_risk'] == 'high' and 
              indicators['rsi'] > 70 and 
@@ -172,7 +170,9 @@ def check_trade_conditions(df, account_balance):
         )
 
         if buy_condition or sell_condition:
-            total_balance = account_balance.get('USDT', 0)
+            logging.info(f"Balance al evaluar condiciones de trading: {account_balance}")
+            logging.info(f"ARTIFICIAL_BALANCE: {ARTIFICIAL_BALANCE}")
+            total_balance = account_balance.get('available_balance', 0)
             used_capital_percentage = (ARTIFICIAL_BALANCE['USDT'] - total_balance) / ARTIFICIAL_BALANCE['USDT']
             if used_capital_percentage <= MAX_CAPITAL_USAGE:
                 if buy_condition:
@@ -187,8 +187,9 @@ def check_trade_conditions(df, account_balance):
             logging.info("No se cumplen las condiciones para comprar o vender.")
             return None
     except Exception as e:
-        logging.error(f"Error al evaluar las condiciones de trading: {e}")
-        return None
+        logging.error
+
+
 
 
 def check_capital_usage(balance, position_size, max_usage):
@@ -252,7 +253,7 @@ def run_trading_bot(use_artificial=True):
                     'in_position': 'buy' if order['side'] == 'buy' else 'sell',
                     'entry_price': float(order['price']),
                     'stop_loss': float(order['price']) * (1 - 0.02) if order['side'] == 'buy' else float(order['price']) * (1 + 0.02),
-                    'take_profit': float(order['price']) * 1.05 if order['side'] == 'buy' else float(order['price']) * 0.95,
+                    'take_profit': float(order['price']) * TAKE_PROFIT_MULTIPLIER if order['side'] == 'buy' else float(order['price']) * (2 - TAKE_PROFIT_MULTIPLIER),
                     'position_size': float(order['size']),
                     'order_id': order['orderId']
                 }
@@ -339,7 +340,7 @@ def run_trading_bot(use_artificial=True):
                             if action:
                                 entry_price = current_price
                                 stop_loss = entry_price * (1 - 0.02) if action == 'buy' else entry_price * (1 + 0.02)
-                                take_profit = entry_price * 1.05 if action == 'buy' else entry_price * 0.95
+                                take_profit = entry_price * TAKE_PROFIT_MULTIPLIER if action == 'buy' else entry_price * (2 - TAKE_PROFIT_MULTIPLIER)
                                 position_size = calculate_trade_amount(account_balance, RISK_PER_TRADE)
                                 if position_size and position_size >= 0.001:
                                     logging.info(f"Posición {action} abierta en {entry_price} con tamaño {position_size}.")
@@ -402,7 +403,6 @@ if __name__ == "__main__":
 
     trading_thread.join()
     server_thread.join()
-
 
 
 
