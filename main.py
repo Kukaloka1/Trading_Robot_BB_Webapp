@@ -27,6 +27,9 @@ class BufferHandler(logging.Handler):
     def emit(self, record):
         log_entry = self.format(record)
         add_log_message(log_entry)
+        
+balance_manager = BalanceManager(initial_balance=INITIAL_BALANCE)
+        
 
 def setup_logging():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -144,6 +147,7 @@ def trigger_manual_order(side, amount):
 def check_trade_conditions(df, account_balance):
     try:
         latest_data = df.iloc[-1]
+
         indicators = {
             'gpt4_sentiment': latest_data['GPT4_Sentiment'],
             'gpt4_risk': latest_data['GPT4_RiskAssessment'],
@@ -158,6 +162,7 @@ def check_trade_conditions(df, account_balance):
         }
 
         logging.info("Evaluando condiciones de trading: %s", indicators)
+
         buy_condition = (
             (indicators['gpt4_sentiment'] == 'positive' and 
              indicators['gpt4_risk'] == 'low' and 
@@ -167,8 +172,9 @@ def check_trade_conditions(df, account_balance):
             indicators['bullish_engulfing'] or
             indicators['pin_bar']
         )
+
         sell_condition = (
-            (ACCOUNT_TYPE == 'futures' and 
+            (account_balance['USDT'] == 'futures' and 
              indicators['gpt4_sentiment'] == 'negative' and 
              indicators['gpt4_risk'] == 'high' and 
              indicators['rsi'] > 70 and 
@@ -187,13 +193,14 @@ def check_trade_conditions(df, account_balance):
                     logging.info("Condiciones de venta detectadas.")
                     return 'sell'
             else:
-                logging.warning(f"Uso de capital máximo alcanzado: {used_capital_percentage:.2%} de {MAX_CAPITAL_USAGE:.2%}")
+                logging.warning(f"Uso de capital máximo alcanzado: {used_capital_percentage * 100:.2f}%")
         else:
             logging.info("No se cumplen las condiciones para comprar o vender.")
             return None
     except Exception as e:
         logging.error(f"Error al evaluar las condiciones de trading: {e}")
         return None
+
 
 def check_capital_usage(balance, position_size, max_usage):
     total_balance = balance['total'].get('USDT', 0)
@@ -301,10 +308,12 @@ def run_trading_bot():
                 add_log_message(f"🤖 Recomendación GPT-4: Sentimiento {gpt4_recommendation['sentiment']}, Evaluación de Riesgo {gpt4_recommendation['risk_assessment']}")
                 logging.info("💼 Obteniendo balance de la cuenta...")
                 add_log_message("💼 Obteniendo balance de la cuenta...")
-                account_balance = balance_manager.get_balance(current_price=current_price)
+                
+                # Obtener el balance de la cuenta
+                account_balance = get_account_balance(use_artificial=True)  # Cambia a False para el balance real
                 if account_balance:
-                    logging.info(f"💰 Balance de la cuenta (USDT): {account_balance['available_balance']}")
-                    add_log_message(f"💰 Balance de la cuenta (USDT): {account_balance['available_balance']}")
+                    logging.info(f"💰 Balance de la cuenta (USDT): {account_balance['USDT']}")
+                    add_log_message(f"💰 Balance de la cuenta (USDT): {account_balance['USDT']}")
 
                     # Añadir logging de posiciones abiertas y porcentaje del capital inicial
                     open_orders = balance_manager.get_operations()
@@ -316,7 +325,7 @@ def run_trading_bot():
                     logging.info(f"📈 Posiciones abiertas: {num_open_positions}, Capital invertido: {invested_percentage:.2f}% del balance inicial")
                     add_log_message(f"📈 Posiciones abiertas: {num_open_positions}, Capital invertido: {invested_percentage:.2f}% del balance inicial")
 
-                    total_balance = account_balance.get('total_balance', 0)
+                    total_balance = account_balance.get('USDT', 0)
                     if total_balance <= 0:
                         logging.warning("El balance disponible es cero. No se puede realizar ninguna operación.")
                         add_log_message("El balance disponible es cero. No se puede realizar ninguna operación.")
@@ -395,6 +404,7 @@ if __name__ == "__main__":
 
     trading_thread.join()
     server_thread.join()
+
 
 
 

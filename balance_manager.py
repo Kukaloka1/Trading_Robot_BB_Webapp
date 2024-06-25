@@ -3,6 +3,7 @@ import os
 import logging
 
 class BalanceManager:
+
     def __init__(self, initial_balance, operations_file='operations.json'):
         self.initial_balance = initial_balance
         self.operations_file = operations_file
@@ -34,7 +35,7 @@ class BalanceManager:
         return total_balance
 
     def get_balance(self, current_price=None):
-        available_balance = self.balance['USDT']
+        available_balance = self.balance.get('USDT', 0)
         total_committed = self.committed_balance
         unrealized_pnl = 0
 
@@ -46,7 +47,7 @@ class BalanceManager:
                     elif op['side'] == 'sell':
                         unrealized_pnl += (op['price'] - current_price) * op['size']
 
-        total_balance = available_balance + total_committed + unrealized_pnl
+        total_balance = available_balance - total_committed + unrealized_pnl
         return {
             'available_balance': available_balance,
             'total_committed': total_committed,
@@ -60,6 +61,7 @@ class BalanceManager:
             self.balance['USDT'] -= cost
         elif side == 'sell':
             self.balance['USDT'] += cost
+
         logging.info(f"Updated artificial balance: {self.balance}")
 
     def can_trade(self, amount, price, side):
@@ -101,14 +103,13 @@ class BalanceManager:
         return self.operations
 
     def clean_operations(self):
-        self.operations = [op for op in self.operations if op.get('status') in ['open', 'active']]
+        self.operations = [op for op in self.operations if op.get('status') != 'fictitious']
         self.save_operations()
 
     def format_operations(self):
         """Leer, formatear y guardar el archivo operation.json"""
         with open(self.operations_file, 'r') as file:
             operations = json.load(file)
-
         with open(self.operations_file, 'w') as file:
             json.dump(operations, file, indent=4)
 

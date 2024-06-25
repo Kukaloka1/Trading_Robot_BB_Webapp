@@ -75,19 +75,22 @@ def get_account_balance(use_artificial=True):
         logging.info("Fetching account balance")
         if use_artificial:
             logging.info("Using artificial balance.")
-            return ARTIFICIAL_BALANCE
-        balance = EXCHANGE.fetch_balance()
-        if balance:
-            logging.info("Account balance fetched successfully.")
-            filtered_balance = {"USDT": balance['total'].get("USDT", 0)}
-            logging.info(f"Filtered account balance: {filtered_balance}")
-            return filtered_balance
+            return {"USDT": ARTIFICIAL_BALANCE["USDT"]}
         else:
-            logging.error("No se pudo obtener el balance de la cuenta.")
-            return {}
+            balance = EXCHANGE.fetch_balance()
+            if balance:
+                logging.info("Account balance fetched successfully.")
+                filtered_balance = {"USDT": balance['total'].get("USDT", 0)}
+                logging.info(f"Filtered account balance: {filtered_balance}")
+                return filtered_balance
+            else:
+                logging.error("No se pudo obtener el balance de la cuenta.")
+                return {"USDT": 0}
     except Exception as e:
         logging.error(f"Error fetching account balance: {e}")
-        return {}
+        return {"USDT": 0}
+
+
 
 
     
